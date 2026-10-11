@@ -3,12 +3,13 @@ import sys
 
 import psycopg
 from langchain_core.documents import Document
-from langchain_openai import OpenAIEmbeddings
 from langchain_postgres import PGEngine, PGVectorStore
 
 from app.config import settings
 from app.db import get_connection
 from app.index import ID_COLUMN, TABLE_NAME
+from app.llm import get_embeddings
+from app.manifest import load_manifest
 
 DEFAULT_TOP_K = 30
 FILTER_FIELDS = ["tenant", "product", "plan", "doc_type", "status"]
@@ -42,12 +43,21 @@ def ensure_collection_ready() -> None:
         )
         raise SystemExit(1)
 
+    # A query embedded by a different model than the index would either fail on
+    # the vector size or, worse, silently return unrelated chunks.
+    indexed_embedding = load_manifest().get("embedding")
+    if indexed_embedding and indexed_embedding != settings.embedding_id:
+        print(
+            f"Collection '{TABLE_NAME}' was indexed with {indexed_embedding}, "
+            f"but EMBEDDING_PROVIDER is configured for {settings.embedding_id}. "
+            "Run 'python -m app.index' to reindex with the current embeddings.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
 
 def connect_store() -> PGVectorStore:
-    embeddings = OpenAIEmbeddings(
-        model=settings.openai_embedding_model,
-        api_key=settings.openai_api_key,
-    )
+    embeddings = get_embeddings()
     engine = PGEngine.from_connection_string(url=settings.database_url)
     return PGVectorStore.create_sync(
         engine=engine,

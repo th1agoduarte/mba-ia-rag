@@ -4,12 +4,13 @@ import sys
 from pathlib import Path
 
 from langchain_core.documents import Document
-from langchain_openai import OpenAIEmbeddings
+from langchain_core.embeddings import Embeddings
 from langchain_postgres import PGEngine, PGVectorStore
 
 from app.config import settings
 from app.db import enable_vector_extension, get_connection
 from app.ingest import OUTPUT_PATH as CHUNKS_PATH
+from app.llm import get_embeddings
 from app.manifest import MANIFEST_PATH, load_manifest, save_manifest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -90,7 +91,7 @@ def table_exists() -> bool:
     return row[0] is not None
 
 
-def connect_store(embeddings: OpenAIEmbeddings, create_table: bool) -> PGVectorStore:
+def connect_store(embeddings: Embeddings, create_table: bool) -> PGVectorStore:
     engine = PGEngine.from_connection_string(url=settings.database_url)
     if create_table:
         # The table column size must match the embedding model, so ask the
@@ -149,14 +150,27 @@ def main() -> None:
     print(f"Loaded chunks: {len(documents)}")
     print(f"Sources in chunks: {len(grouped)}")
 
+    print(f"Embedding: {settings.embedding_id}")
     print("Connecting to Postgres...")
     enable_vector_extension()
 
-    indexed_sources = load_manifest().get("sources", {})
+    manifest = load_manifest()
+    indexed_sources = manifest.get("sources", {})
+
+    # Vectors from another embedding model live in a different space (and often
+    # have a different size), so none of the indexed rows can be reused.
+    embedding_changed = bool(indexed_sources) and (
+        manifest.get("embedding") != settings.embedding_id
+    )
+    if embedding_changed:
+        print(
+            f"Embedding changed: {manifest.get('embedding') or 'unknown'} -> "
+            f"{settings.embedding_id}"
+        )
 
     # Without a manifest (or without the table) the index state is unknown,
     # so rebuild the table from scratch instead of diffing against stale rows.
-    rebuild = not indexed_sources or not table_exists()
+    rebuild = not indexed_sources or not table_exists() or embedding_changed
     if rebuild:
         indexed_sources = {}
 
@@ -185,10 +199,7 @@ def main() -> None:
         document for source in sources_to_index for document in grouped[source]
     ]
 
-    embeddings = OpenAIEmbeddings(
-        model=settings.openai_embedding_model,
-        api_key=settings.openai_api_key,
-    )
+    embeddings = get_embeddings()
     store = connect_store(embeddings, create_table=rebuild)
 
     if delete_ids:
@@ -200,7 +211,8 @@ def main() -> None:
         )
 
     save_manifest(
-        {source: manifest_entry(docs) for source, docs in grouped.items()}
+        {source: manifest_entry(docs) for source, docs in grouped.items()},
+        embedding=settings.embedding_id,
     )
 
     print(f"Deleted chunks: {len(delete_ids)}")

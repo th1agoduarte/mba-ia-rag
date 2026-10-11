@@ -13,14 +13,13 @@ from contextlib import contextmanager
 from typing import Callable
 from uuid import uuid4
 
-from langchain.chat_models import init_chat_model
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.documents import Document
 from langchain_core.prompt_values import PromptValue
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
-from app.config import settings
+from app.llm import get_chat_model, with_structured_output
 from app.query_planner import (
     QueryPlan,
     build_filters,
@@ -212,15 +211,10 @@ class RagPipeline:
         # temperature=0: the planner is a classifier, and the same question must always
         # produce the same plan. With the default temperature it flip-flopped between
         # asking for clarification and guessing.
-        model = init_chat_model(
-            settings.openai_chat_model,
-            model_provider="openai",
-            api_key=settings.openai_api_key,
-            temperature=0,
-        )
-        self.planner = model.with_structured_output(QueryPlan)
-        self.reranker = model.with_structured_output(RerankResult)
-        self.answerer = model.with_structured_output(RagAnswer)
+        model = get_chat_model(deterministic=True)
+        self.planner = with_structured_output(model, QueryPlan)
+        self.reranker = with_structured_output(model, RerankResult)
+        self.answerer = with_structured_output(model, RagAnswer)
 
     def run(
         self,

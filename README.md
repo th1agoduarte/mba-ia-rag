@@ -44,16 +44,51 @@ terminal (`app/rag_chat.py`) e a API HTTP (`app/api.py`).
 
 - Python 3.11+
 - Docker e Docker Compose
-- Uma chave de API da OpenAI
+- Uma chave de API de pelo menos um provedor: OpenAI, Anthropic ou Google (Gemini)
 
 ## Setup
 
-1. Crie o `.env` a partir do exemplo e preencha `OPENAI_API_KEY` (o exemplo já traz
-   modelo de chat, modelo de embeddings e URL do banco):
+1. Crie o `.env` a partir do exemplo, escolha os provedores e preencha as chaves
+   deles (o exemplo já traz os modelos de cada provedor e a URL do banco):
 
    ```bash
    cp .env.example .env
    ```
+
+## Provedores de modelo
+
+O provedor é escolhido no `.env`, sem mudar código. Chat e embeddings são escolhidos
+separadamente:
+
+| Variável | Valores | Usado em |
+| --- | --- | --- |
+| `LLM_PROVIDER` | `openai`, `anthropic`, `google` | query planner, reranking, resposta, chats |
+| `EMBEDDING_PROVIDER` | `openai`, `google` | indexação e busca no pgvector |
+
+Só as chaves dos provedores escolhidos são obrigatórias (`OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`). O modelo de cada provedor vem de
+`<PROVEDOR>_CHAT_MODEL` e `<PROVEDOR>_EMBEDDING_MODEL`. Toda a escolha acontece em
+`app/llm.py`; o resto do projeto só pede "o modelo de chat" ou "os embeddings".
+
+Exemplo: chat com Claude e embeddings da OpenAI (o índice existente continua válido):
+
+```env
+LLM_PROVIDER=anthropic
+EMBEDDING_PROVIDER=openai
+ANTHROPIC_API_KEY=...
+OPENAI_API_KEY=...
+```
+
+Observações:
+
+- A Anthropic não tem API de embeddings, por isso não aparece em `EMBEDDING_PROVIDER`.
+- Vetores de modelos de embedding diferentes não são comparáveis (e costumam ter
+  tamanhos diferentes). O manifesto do índice guarda qual embedding gerou os vetores:
+  ao trocar `EMBEDDING_PROVIDER` ou o modelo, o próximo `python -m app.index` recria a
+  tabela inteira, e o retrieval se recusa a rodar até lá.
+- Com a Anthropic, o pipeline não envia `temperature=0` (os modelos Claude atuais
+  rejeitam temperatura fora do padrão) e usa saída estruturada por JSON schema em vez
+  de tool call forçada.
 
 2. Suba o Postgres com pgvector:
 

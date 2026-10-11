@@ -1,15 +1,10 @@
-from langchain.chat_models import init_chat_model
 from langchain.messages import HumanMessage
 
-from app.config import settings
+from app.llm import get_chat_model
 
 
 def main() -> None:
-    model = init_chat_model(
-        settings.openai_chat_model,
-        model_provider="openai",
-        api_key=settings.openai_api_key,
-    )
+    model = get_chat_model()
 
     print("No-RAG chat started.")
     print("This chat does not use the internal knowledge base yet.")

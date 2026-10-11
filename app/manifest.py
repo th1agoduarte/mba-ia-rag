@@ -19,9 +19,10 @@ def load_manifest(path: Path = MANIFEST_PATH) -> dict:
         return json.load(handle)
 
 
-def save_manifest(sources: dict, path: Path = MANIFEST_PATH) -> None:
+def save_manifest(sources: dict, embedding: str, path: Path = MANIFEST_PATH) -> None:
     manifest = {
         "pipeline": PIPELINE,
+        "embedding": embedding,
         "indexed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "sources": sources,
     }

@@ -1,10 +1,9 @@
 import sys
 from pathlib import Path
 
-from langchain.chat_models import init_chat_model
 from langchain.messages import HumanMessage, SystemMessage
 
-from app.config import settings
+from app.llm import get_chat_model
 
 KNOWLEDGE_BASE_DIR = Path(__file__).resolve().parent.parent / "knowledge_base"
 DEFAULT_DOCUMENT = "product-support-sla.md"
@@ -28,11 +27,7 @@ def main() -> None:
     document_name = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_DOCUMENT
     document = load_document(document_name)
 
-    model = init_chat_model(
-        settings.openai_chat_model,
-        model_provider="openai",
-        api_key=settings.openai_api_key,
-    )
+    model = get_chat_model()
 
     system_message = SystemMessage(f"{INSTRUCTION}\n\nDocument:\n{document}")
 
